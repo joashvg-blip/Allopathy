@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<!--
+  MediKiosk AI Assistant — standalone module (voice-only)
+  =========================================================
+  Drop these three pieces into any page:
+    1) CSS  -> inside your <style> block
+    2) HTML -> where you want the trigger button + modal to live
+    3) JS   -> inside your <script> block (before </script>)
+
+  Setup: paste your Gemini API key into GEMINI_API_KEY below.
+  Get a free key at https://aistudio.google.com/apikey
+
+  IMPORTANT — microphone access requires a secure context:
+  open this via http://localhost (a local server) or a real
+  https:// deployment. Opening the file directly from disk
+  (file:///...) will make Chrome block the mic with a
+  "not-allowed" error.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediKiosk AI Assistant (standalone module)</title>
+<style>
+body { font-family: Arial, sans-serif; background: #f4faf7; color: #0756b3; padding: 30px; }
+h1 { font-size: 22px; }
+
+/* ===================== 1) CSS — AI ASSISTANT ===================== */
+/* =========================================================
+   AI ASSISTANT
+========================================================= */
+.ai-btn {
+    background: white;
+    color: #0756b3;
+    border: 1px solid #b9c6d7;
+    border-radius: 10px;
+    padding: 10px 15px;
+    font-size: 15px;
+    font-weight: 700;
+    min-height: 44px;
+    cursor: pointer;
+}
+
+.ai-btn:hover {
+    background: #f0f8f5;
+}
+
+.ai-dialog {
+    position: fixed;
+    inset: 0;
+    background: rgba(9, 25, 48, 0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+}
+
+.ai-dialog.active {
+    display: flex;
+}
+
+.ai-box {
+    width: min(560px, 100%);
+    max-height: 88vh;
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 15px 45px rgba(0,0,0,0.22);
+    border: 1px solid #d7e5f5;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.ai-box-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 22px;
+    background: #17356b;
+    color: white;
+}
+
+.ai-box-header-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ai-box-header-title .icon {
+    font-size: 22px;
+}
+
+.ai-box-header-title h2 {
+    margin: 0;
+    font-size: 18px;
+    color: white;
+}
+
+.ai-box-header-title span {
+    display: block;
+    font-size: 12px;
+    font-weight: 400;
+    opacity: 0.85;
+}
+
+.ai-close {
+    background: rgba(255,255,255,0.15);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.ai-close:hover {
+    background: rgba(255,255,255,0.28);
+}
+
+.ai-disclaimer {
+    background: #eef4fb;
+    color: #0756b3;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 10px 22px;
+    border-bottom: 1px solid #e2e7ee;
+}
+
+.ai-chat-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: #f7fafc;
+    min-height: 220px;
+}
+
+.ai-msg {
+    max-width: 82%;
+    padding: 11px 14px;
+    border-radius: 13px;
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+.ai-msg.patient {
+    align-self: flex-end;
+    background: #17356b;
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.ai-msg.assistant {
+    align-self: flex-start;
+    background: white;
+    color: #0756b3;
+    border: 1px solid #dce4eb;
+    border-bottom-left-radius: 4px;
+}
+
+.ai-status-row {
+    padding: 8px 22px 0;
+    font-size: 13px;
+    color: #0756b3;
+    min-height: 18px;
+}
+
+.ai-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 22px 22px 28px;
+    border-top: 1px solid #e2e7ee;
+}
+
+.ai-mic-btn {
+    background: #17356b;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 72px;
+    height: 72px;
+    font-size: 28px;
+    cursor: pointer;
+    flex-shrink: 0;
+    box-shadow: 0 4px 14px rgba(23, 53, 107, 0.3);
+}
+
+.ai-mic-btn:hover {
+    background: #112954;
+}
+
+.ai-mic-btn.listening {
+    background: #b42318;
+    animation: aiPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes aiPulse {
+    0% { box-shadow: 0 0 0 0 rgba(180, 35, 24, 0.45); }
+    70% { box-shadow: 0 0 0 16px rgba(180, 35, 24, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(180, 35, 24, 0); }
+}
+
+.ai-mic-btn:disabled {
+    background: #9aa9bd;
+    cursor: not-allowed;
+}
+
+.ai-mic-label {
+    font-size: 13px;
+    color: #0756b3;
+    font-weight: 600;
+}
+
+@media (max-width: 650px) {
+    .ai-box {
+        max-height: 92vh;
+    }
+    .ai-box-header {
+        padding: 14px 16px;
+    }
+    .ai-chat-log {
+        padding: 14px 16px;
+    }
+    .ai-controls {
+        padding: 12px 16px 16px;
+    }
+}
+
+</style>
+</head>
+<body>
+
+<h1>MediKiosk AI Assistant — standalone demo</h1>
+<p>Click the button below to try it. (Paste your Gemini API key in the script first, and serve this over localhost/https — not file://.)</p>
+
+<!-- ===================== 2) HTML — TRIGGER BUTTON + MODAL ===================== -->
+<button class="ai-btn" onclick="openAIAssistant()">🤖 AI സഹായി / AI Assistant</button>
+
+<!-- ================= AI ASSISTANT DIALOG ================= -->
+<div id="aiDialog" class="ai-dialog" role="dialog" aria-modal="true" aria-labelledby="aiDialogTitle">
+    <div class="ai-box">
+
+        <div class="ai-box-header">
+            <div class="ai-box-header-title">
+                <div class="icon">🤖</div>
+                <div>
+                    <h2 id="aiDialogTitle">AI സഹായി / AI Assistant</h2>
+                    <span>Ask a quick health question — short answers only</span>
+                </div>
+            </div>
+            <button class="ai-close" onclick="closeAIAssistant()" aria-label="Close">✕</button>
+        </div>
+
+        <div class="ai-disclaimer">
+            ഇത് പൊതുവായ വിവരങ്ങൾ മാത്രമാണ്, രോഗനിർണയമല്ല. അടിയന്തര സാഹചര്യത്തിൽ "Need Assistance" ഉപയോഗിക്കുക.
+            <br>
+            This gives general information only, not a diagnosis. For anything urgent, use "Need Assistance" instead.
+        </div>
+
+        <div id="aiChatLog" class="ai-chat-log">
+            <div class="ai-msg assistant">
+                Hello. I'm the MediKiosk assistant. Ask me a short question about your visit or symptoms — I'll keep my answers brief.
+            </div>
+        </div>
+
+        <div id="aiStatusRow" class="ai-status-row"></div>
+
+        <div class="ai-controls">
+            <button id="aiMicBtn" class="ai-mic-btn" onclick="toggleAIVoice()" aria-label="Speak">🎤</button>
+            <span class="ai-mic-label">Tap to speak</span>
+        </div>
+
+    </div>
+</div>
+
+
+<script>
+// A minimal stand-in so this demo runs standalone.
+// In MediKiosk itself, this 'language' variable already exists app-wide,
+// so the assistant automatically follows the patient's chosen language.
+let language = "en";
+
+/* ===================== 3) JAVASCRIPT — AI ASSISTANT LOGIC ===================== */
+/* =========================================================
+   AI ASSISTANT (Gemini-powered, brief medical Q&A)
+
+   ⚠️ DEMO ONLY: the API key below is called directly from the
+   browser, which exposes it in page source / network requests.
+   Fine for a hackathon demo, NOT safe for a real deployment —
+   proxy this call through a backend before going live, and
+   never commit a real key to a public repo.
+========================================================= */
+
+const GEMINI_API_KEY = "AQ.Ab8RN6Lronv-JMRZvZfdGKu0Tclx8CDv3K_j9ntg5GE3PW2yTA"; // <-- paste your Gemini API key
+const GEMINI_MODEL = "gemini-3.6-flash";
+
+const AI_SYSTEM_INSTRUCTION = `
+You are the MediKiosk AI Assistant, shown to patients on a clinic intake kiosk while they wait.
+
+Rules you must always follow:
+- Answer in 1–2 short sentences. Never write a paragraph.
+- Use plain, simple language a worried patient can follow quickly.
+- Never give a diagnosis or prescribe medication or dosages.
+- If symptoms sound urgent or serious (chest pain, difficulty breathing, severe bleeding, loss of consciousness, etc.), tell the patient in one short sentence to alert staff immediately using the "Need Assistance" button.
+- If you don't know, say so briefly and suggest they ask their doctor.
+- Do not repeat the patient's question back to them. Just answer.
+`.trim();
+
+let aiChatHistory = [];
+let aiRecognition = null;
+let aiIsListening = false;
+
+function getAILangCode() {
+    // Reuses the app's existing bilingual state.
+    return (typeof language !== "undefined" && language === "ml") ? "ml-IN" : "en-IN";
+}
+
+function openAIAssistant() {
+    document.getElementById("aiDialog").classList.add("active");
+}
+
+function closeAIAssistant() {
+    document.getElementById("aiDialog").classList.remove("active");
+    if (aiIsListening && aiRecognition) {
+        aiRecognition.stop();
+    }
+    window.speechSynthesis.cancel();
+}
+
+document.getElementById("aiDialog")?.addEventListener("click", function(event) {
+    if (event.target === this) closeAIAssistant();
+});
+
+function addAIMessage(text, sender) {
+    const log = document.getElementById("aiChatLog");
+    const div = document.createElement("div");
+    div.className = "ai-msg " + sender;
+    div.textContent = text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+}
+
+function setAIStatus(text) {
+    document.getElementById("aiStatusRow").textContent = text || "";
+}
+
+async function handleAIUserMessage(text) {
+    addAIMessage(text, "patient");
+    setAIStatus("Thinking...");
+
+    const reply = await getGeminiReply(text);
+
+    addAIMessage(reply, "assistant");
+    setAIStatus("");
+    speakAIReply(reply);
+}
+
+async function getGeminiReply(userText) {
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_API_KEY_HERE") {
+        return "AI assistant is not configured yet. Please add a Gemini API key in the code.";
+    }
+
+    aiChatHistory.push({ role: "user", parts: [{ text: userText }] });
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+
+    try {
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                system_instruction: { parts: [{ text: AI_SYSTEM_INSTRUCTION }] },
+                contents: aiChatHistory,
+                generationConfig: {
+                    maxOutputTokens: 200, // hard cap; kept above the thinking+answer budget so replies aren't cut off
+                    thinkingConfig: {
+                        thinkingBudget: 0 // disable "thinking" tokens — they'd otherwise eat this budget before the reply is written
+                    }
+                }
+            })
+        });
+
+        if (!res.ok) {
+            const errText = await res.text();
+            console.error("Gemini API error:", errText);
+            return "Sorry, I couldn't process that right now.";
+        }
+
+        const data = await res.json();
+        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+        if (!reply) {
+            return "I didn't quite get that — could you try again?";
+        }
+
+        aiChatHistory.push({ role: "model", parts: [{ text: reply }] });
+        return reply;
+
+    } catch (error) {
+        console.error(error);
+        return "Something went wrong reaching the assistant.";
+    }
+}
+
+function speakAIReply(text) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = getAILangCode();
+    window.speechSynthesis.speak(utterance);
+}
+
+function toggleAIVoice() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const micBtn = document.getElementById("aiMicBtn");
+
+    if (!SpeechRecognition) {
+        setAIStatus("Voice input isn't supported in this browser. Try typing instead.");
+        return;
+    }
+
+    if (aiIsListening && aiRecognition) {
+        aiRecognition.stop();
+        return;
+    }
+
+    aiRecognition = new SpeechRecognition();
+    aiRecognition.lang = getAILangCode();
+    aiRecognition.interimResults = false;
+    aiRecognition.maxAlternatives = 1;
+
+    aiRecognition.addEventListener("start", () => {
+        aiIsListening = true;
+        micBtn.classList.add("listening");
+        setAIStatus("Listening...");
+    });
+
+    aiRecognition.addEventListener("result", async (event) => {
+        const transcript = event.results[0][0].transcript;
+        await handleAIUserMessage(transcript);
+    });
+
+    aiRecognition.addEventListener("end", () => {
+        aiIsListening = false;
+        micBtn.classList.remove("listening");
+        if (document.getElementById("aiStatusRow").textContent === "Listening...") {
+            setAIStatus("");
+        }
+    });
+
+    aiRecognition.addEventListener("error", (e) => {
+        aiIsListening = false;
+        micBtn.classList.remove("listening");
+        setAIStatus("Voice input error: " + e.error);
+    });
+
+    aiRecognition.start();
+}
+
+document.addEventListener("keydown", function(event) {
+    if (event.key === "Escape") closeAIAssistant();
+});
+</script>
+
+</body>
+</html>
